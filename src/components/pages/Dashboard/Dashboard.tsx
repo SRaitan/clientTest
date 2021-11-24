@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as t from "io-ts";
 import { PathReporter } from "io-ts/PathReporter";
-import React from "react";
+import React, {useCallback} from "react";
 import assertNever from "../../../utils/assertNever";
 import endpoint from "../../../utils/endpoint";
 import ErrorView from "./views/ErrorView";
@@ -20,70 +20,86 @@ const resType = t.type({
 
 export type Report = t.TypeOf<typeof resType>;
 
+export class LastRefresh extends React.Component {
+    refreshDate: Date = new Date(0)
+}
+
 type State =
     | {
-          type: "Initial";
-      }
+    type: "Initial";
+}
     | {
-          type: "Resolved";
-          report: Report;
-          isRefreshing: boolean;
-      }
+    type: "Resolved";
+    report: Report;
+    isRefreshing: boolean;
+}
     | {
-          type: "Rejected";
-          error: string;
-      };
+    type: "Refresh";
+    report: Report;
+    isRefreshing: boolean;
+}
+    | {
+    type: "Rejected";
+    error: string;
+};
+
+let lastRefresh = new LastRefresh(new Date(0)) // 1/1/1970
+export function RefreshButtonClick(){
+    return <LoadingView />;
+}
+//let setRef1: { (arg0: LastRefresh): void; (value: React.SetStateAction<LastRefresh>): void; };
 
 function useDashboard(params: { year: number }) {
     const [state, setState] = React.useState<State>({ type: "Initial" });
+    const [state2, setRef] = React.useState<LastRefresh>(lastRefresh);
 
     const startLoading = () => {
         setState((prevState) => {
             switch (prevState.type) {
                 case "Initial":
+                case "Refresh":
                 case "Rejected":
-                    return { type: "Initial" };
+                    return { type: "Initial"};
                 case "Resolved":
                     return { ...prevState, isRefreshing: true };
             }
         });
     };
-
     const fetchReport = React.useCallback(() => {
+        console.log("fetchrep")
         startLoading();
-
-        return axios
-            .get<unknown>(endpoint(`reports/${params.year}`))
+        return axios.get<unknown>(endpoint(`reports/${params.year}`))
             .then((response) => {
-                if (!resType.is(response)) {
+                if (!resType.is(response.data)) {
                     console.error(PathReporter.report(resType.decode(response)).join(", "));
                     throw new Error("Error");
                 }
-
-                setState({ type: "Resolved", report: response, isRefreshing: false });
+                setState({ type: "Resolved", report: response.data, isRefreshing: false });
             })
             .catch(() => {
                 setState({ type: "Rejected", error: "Error" });
             });
-    }, [params.year]);
+    }, [params.year, state2]);
 
     React.useEffect(() => {
         fetchReport();
     }, [fetchReport]);
 
-    return { state, actions: { fetchReport } };
+    return { state, setRef, actions: { fetchReport } };
 }
 
 const Dashboard = () => {
-    const { state, actions } = useDashboard({ year: 2021 });
+    const { state, setRef, actions } = useDashboard({ year: 2021 });
 
     switch (state.type) {
         case "Initial":
+        case "Refresh":
             return <LoadingView />;
         case "Rejected":
             return <ErrorView message={state.error} onClickRetry={actions.fetchReport} />;
         case "Resolved":
-            return <TableView {...state} />;
+            const b = {report: state.report, type: state.type, isRefreshing: state.isRefreshing, state2: setRef};
+            return <TableView {...b} />;
         default:
             assertNever(state);
             return <></>;
