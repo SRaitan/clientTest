@@ -1,104 +1,90 @@
-import axios from "axios";
-import * as t from "io-ts";
-import { PathReporter } from "io-ts/PathReporter";
-import React, {useCallback} from "react";
-import assertNever from "../../../utils/assertNever";
-import endpoint from "../../../utils/endpoint";
-import ErrorView from "./views/ErrorView";
-import LoadingView from "./views/LoadingView";
-import TableView from "./views/TableView";
+import React from "react";
+import styled from "styled-components/macro";
+import { ReactComponent as MedFlytLogo } from "../../../../assets/logo.svg";
+import { ReactComponent as RefreshIcon } from "../../../../assets/refresh.svg";
+import Center from "../../../shared/Center";
+import Row from "../../../shared/Row";
+import Button from "../components/Button";
+import None from "../components/None";
+import { PrimaryText } from "../components/PrimaryText";
+import RefreshIndicator from "../components/RefreshIndicator";
+import TableBlocks from "../components/TableBlocks";
+import {LastRefresh, Report} from "../Dashboard";
+import LoadingView from "./LoadingView";
 
-const resType = t.type({
-    year: t.number,
-    caregivers: t.array(
-        t.type({
-            name: t.string,
-            patients: t.array(t.string)
-        })
-    )
-});
-
-export type Report = t.TypeOf<typeof resType>;
-
-export class LastRefresh extends React.Component {
-    refreshDate: Date = new Date(0)
-}
-
-type State =
-    | {
-    type: "Initial";
-}
-    | {
-    type: "Resolved";
+interface Props {
     report: Report;
     isRefreshing: boolean;
+    state2: any;
 }
-    | {
-    type: "Refresh";
-    report: Report;
-    isRefreshing: boolean;
+
+const Header = styled(Center)`
+    height: auto;
+    gap: 32px;
+    margin-bottom: 48px;
+`;
+
+const StyledTableView = styled.div`
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 128px;
+    margin: auto;
+    height: 100%;
+    width: 1300px;
+    max-width: 100%;
+    gap: 16px;
+`;
+
+const { Table, Tr, Th, Td } = TableBlocks;
+let buttonText = 'Refresh';
+
+function refreshPage(props: Props) {
+    props.state2(new LastRefresh(new Date()))
 }
-    | {
-    type: "Rejected";
-    error: string;
+
+const TableView = (props: Props) => {
+    return (
+        <StyledTableView>
+            <RefreshIndicator isRefreshing = {props.isRefreshing} />
+            <Header>
+                <MedFlytLogo />
+                <PrimaryText>Year {props.report.year} - caregivers report</PrimaryText>
+            </Header>
+            <Row justifyContent="flex-end">
+                <Button>
+                    <RefreshIcon />
+                    {/*<span onClick={() => {props.state2(new LastRefresh(new Date()))}}>Refresh</span>*/}
+                    <span onClick={() => {refreshPage(props)}}>{buttonText}</span>
+                </Button>
+            </Row>
+            <Table>
+                <thead>
+                <Tr>
+                    <Th>Caregiver name</Th>
+                    <Th>Patients</Th>
+                </Tr>
+                </thead>
+                <tbody>
+                {props.report.caregivers.map((caregiver, idx) => (
+                    <Tr key={idx}>
+                        <Td>{caregiver.name}</Td>
+                        <Td>
+                            {caregiver.patients.length > 0 ? (caregiver.patients.join(", ")) : (<None />)}
+                        </Td>
+                    </Tr>
+                ))}
+                </tbody>
+                {props.report.caregivers.length === 0 ? (
+                    <tbody>
+                    <tr>
+                        <td colSpan={2}>No results!</td>
+                    </tr>
+                    </tbody>
+                ) : null}
+            </Table>
+        </StyledTableView>
+    );
 };
 
-let lastRefresh = new LastRefresh(new Date(0)) // 1/1/1970
-
-function useDashboard(params: { year: number }) {
-    const [state, setState] = React.useState<State>({ type: "Initial" });
-    const [state2, setRef] = React.useState<LastRefresh>(lastRefresh);
-
-    const startLoading = () => {
-        setState((prevState) => {
-            switch (prevState.type) {
-                case "Initial":
-                case "Refresh":
-                case "Rejected":
-                    return { type: "Initial"};
-                case "Resolved":
-                    return { ...prevState, isRefreshing: true };
-            }
-        });
-    };
-    const fetchReport = React.useCallback(() => {
-        startLoading();
-        return axios.get<unknown>(endpoint(`reports/${params.year}`))
-            .then((response) => {
-                if (!resType.is(response.data)) {
-                    console.error(PathReporter.report(resType.decode(response)).join(", "));
-                    throw new Error("Error");
-                }
-                setState({ type: "Resolved", report: response.data, isRefreshing: false });
-            })
-            .catch(() => {
-                setState({ type: "Rejected", error: "Error" });
-            });
-    }, [params.year, state2]);
-
-    React.useEffect(() => {
-        fetchReport();
-    }, [fetchReport]);
-
-    return { state, setRef, actions: { fetchReport } };
-}
-
-const Dashboard = () => {
-    const { state, setRef, actions } = useDashboard({ year: 2021 });
-
-    switch (state.type) {
-        case "Initial":
-        case "Refresh":
-            return <LoadingView />;
-        case "Rejected":
-            return <ErrorView message={state.error} onClickRetry={actions.fetchReport} />;
-        case "Resolved":
-            const b = {report: state.report, type: state.type, isRefreshing: state.isRefreshing, state2: setRef};
-            return <TableView {...b} />;
-        default:
-            assertNever(state);
-            return <></>;
-    }
-};
-
-export default Dashboard;
+export default TableView;

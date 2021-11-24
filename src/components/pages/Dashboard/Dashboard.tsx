@@ -44,10 +44,6 @@ type State =
 };
 
 let lastRefresh = new LastRefresh(new Date(0)) // 1/1/1970
-export function RefreshButtonClick(){
-    return <LoadingView />;
-}
-//let setRef1: { (arg0: LastRefresh): void; (value: React.SetStateAction<LastRefresh>): void; };
 
 function useDashboard(params: { year: number }) {
     const [state, setState] = React.useState<State>({ type: "Initial" });
